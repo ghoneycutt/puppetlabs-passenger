@@ -44,7 +44,7 @@ class passenger (
   $gem_binary_path        = $passenger::params::gem_binary_path,
   $mod_passenger_location = $passenger::params::mod_passenger_location,
   $passenger_provider     = $passenger::params::passenger_provider,
-  $passenger_package      = $passenger::params::passenger_package
+  $passenger_package      = $passenger::params::passenger_package,
 ) inherits passenger::params {
 
   include apache
@@ -52,9 +52,12 @@ class passenger (
 
   case $osfamily {
     'debian': {
-      package { ['libopenssl-ruby', 'libcurl4-openssl-dev']:
+      @package { ['libopenssl-ruby', 'libcurl4-openssl-dev']:
         ensure => present,
-        before => Exec['compile-passenger'],
+        tag    => 'pre_passenger',
+        before => [ Exec['compile-passenger'],
+                    Service['apache::httpd'],
+                  ],
       }
 
       file { '/etc/apache2/mods-available/passenger.load':
@@ -92,9 +95,18 @@ class passenger (
       }
     }
     'redhat': {
-      package { 'libcurl-devel':
+      @package { ['gcc',
+                  'gcc-c++',
+                  'libcurl-devel',
+                  'openssl-devel',
+                  'ruby-devel',
+                  'zlib-devel',
+                  ]:
         ensure => present,
-        before => Exec['compile-passenger'],
+        tag    => 'pre_passenger',
+        before => [ Exec['compile-passenger'],
+                    Service['apache::httpd'],
+                  ],
       }
 
       file { '/etc/httpd/conf.d/passenger.conf':
@@ -110,6 +122,10 @@ class passenger (
     }
   }
 
+  Package <| tag == 'pre_passenger' |> {
+    before => Package['passenger'],
+  }
+
   package {'passenger':
     name     => $passenger_package,
     ensure   => $passenger_version,
@@ -121,6 +137,6 @@ class passenger (
     command   => 'passenger-install-apache2-module -a',
     logoutput => on_failure,
     creates   => $mod_passenger_location,
-    require   => Package['passenger'],
+    subscribe => Package['passenger'],
   }
 }
